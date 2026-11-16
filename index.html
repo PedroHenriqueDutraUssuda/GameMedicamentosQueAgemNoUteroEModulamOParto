@@ -1,0 +1,1572 @@
+```html
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioSim: Farmacologia da Célula Miometrial</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #f1f5f9;
+            overflow-x: hidden;
+            user-select: none;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Animações para linhas de sinalização no SVG */
+        @keyframes flowDash {
+            to {
+                stroke-dashoffset: -24;
+            }
+        }
+        .pathway-active {
+            stroke-dasharray: 6, 6;
+            animation: flowDash 0.6s linear infinite;
+        }
+        .pathway-line {
+            transition: stroke 0.3s ease, stroke-width 0.3s ease, opacity 0.3s ease;
+        }
+        .node-interactive {
+            cursor: pointer;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+            transform-box: fill-box;
+            transform-origin: center;
+        }
+        .node-interactive:hover {
+            transform: scale(1.09);
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.45));
+        }
+        .node-active-glow {
+            filter: drop-shadow(0 0 12px currentColor);
+        }
+        .node-quiz-target:hover {
+            filter: drop-shadow(0 0 14px #38bdf8);
+        }
+        /* Scrollbar sutil */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        @keyframes pulseBorder {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.5); }
+            50% { border-color: rgba(239, 68, 68, 1); }
+        }
+        .emergency-border {
+            animation: pulseBorder 1.2s infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between bg-slate-950 text-slate-100">
+
+    <!-- HEADER SUPERIOR & BARRAS FISIOLÓGICAS -->
+    <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-3 py-2.5 shadow-lg">
+        <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
+            <!-- Título e Logo -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 via-pink-600 to-amber-500 flex items-center justify-center shadow-md shadow-rose-500/20 font-extrabold text-xl">
+                    ⚡
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-extrabold text-base sm:text-lg tracking-tight text-white">MIOMÉTRIO<span class="text-rose-400">SIM</span></h1>
+                        <span class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700 font-medium">Fisiologia & Farmacologia</span>
+                    </div>
+                    <p class="text-xs text-slate-400 hidden sm:block">Simulador Interativo de Contração (Uterotônicos) e Relaxamento (Tocolíticos)</p>
+                </div>
+            </div>
+
+            <!-- Indicadores Fisiológicos em Tempo Real -->
+            <div class="flex flex-1 max-w-2xl items-center gap-3 sm:gap-5 bg-slate-950/90 px-3.5 py-2 rounded-xl border border-slate-800">
+                <!-- Ca2+ Intracelular -->
+                <div class="flex-1">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-amber-400 font-semibold flex items-center gap-1">● [Ca²⁺] Intracelular</span>
+                        <span id="caValueText" class="mono font-bold text-amber-300">20%</span>
+                    </div>
+                    <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="caBar" class="h-full bg-gradient-to-r from-amber-500 to-yellow-300 transition-all duration-150" style="width: 20%"></div>
+                    </div>
+                </div>
+
+                <!-- Atividade da MLCK -->
+                <div class="flex-1">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-emerald-400 font-semibold flex items-center gap-1">⚡ Atividade MLCK</span>
+                        <span id="mlckValueText" class="mono font-bold text-emerald-300">15%</span>
+                    </div>
+                    <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="mlckBar" class="h-full bg-gradient-to-r from-emerald-500 to-green-300 transition-all duration-150" style="width: 15%"></div>
+                    </div>
+                </div>
+
+                <!-- Nível de Contração Uterina -->
+                <div class="flex-1">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-rose-400 font-bold flex items-center gap-1">❤️ CONTRAÇÃO</span>
+                        <span id="contractionValueText" class="mono font-extrabold text-rose-400">15%</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
+                        <div id="contractionBar" class="h-full rounded-full bg-gradient-to-r from-rose-600 via-pink-500 to-amber-400 transition-all duration-150" style="width: 15%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seletor de Modos e Som -->
+            <div class="flex items-center gap-1.5">
+                <div class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
+                    <button id="btnModeLab" onclick="setGameMode('lab')" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-rose-600 text-white shadow">
+                        🔬 Lab Livre
+                    </button>
+                    <button id="btnModePPH" onclick="setGameMode('pph')" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-300 hover:bg-slate-800">
+                        🚨 Missão 1: Atonia
+                    </button>
+                    <button id="btnModeToc" onclick="setGameMode('tocolysis')" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-300 hover:bg-slate-800">
+                        🛑 Missão 2: Tocólise
+                    </button>
+                    <button id="btnModeQuiz" onclick="setGameMode('quiz')" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-300 hover:bg-slate-800">
+                        🧠 Quiz Bioquímico
+                    </button>
+                </div>
+
+                <button id="btnSound" onclick="toggleAudio()" title="Ativar/Desativar Efeitos Sonoros" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-sm">
+                    🔊
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- BANNER DE MISSÃO / QUIZ ATIVO -->
+    <div id="missionBanner" class="hidden bg-slate-900 border-b border-slate-800 px-4 py-2.5 z-20">
+        <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <span id="missionBadge" class="px-2.5 py-1 rounded-lg text-xs font-extrabold uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                    MISSÃO CLÍNICA
+                </span>
+                <div>
+                    <h2 id="missionTitle" class="font-bold text-sm sm:text-base text-white">Hemorragia Pós-Parto (Atonia Uterina)</h2>
+                    <p id="missionDesc" class="text-xs text-slate-300">Combine uterotônicos (Ocitocina, Prostaglandinas ou Metilergometrina) e abra canais de Ca²⁺ para manter a contração acima de 80% por 5 segundos!</p>
+                </div>
+            </div>
+
+            <!-- Status / Progresso da Missão -->
+            <div class="flex items-center gap-4">
+                <div id="missionProgressWrap" class="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                    <span class="text-xs text-slate-400">Estabilidade no Alvo:</span>
+                    <div class="w-28 h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div id="missionHoldBar" class="h-full bg-emerald-400 transition-all duration-150" style="width: 0%"></div>
+                    </div>
+                    <span id="missionHoldText" class="mono text-xs font-bold text-emerald-400">0.0s / 5.0s</span>
+                </div>
+
+                <div class="flex items-center gap-3 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                    <div>
+                        <span class="text-[10px] uppercase text-slate-400 block">Tempo</span>
+                        <span id="missionTimer" class="mono text-sm font-extrabold text-amber-400">45s</span>
+                    </div>
+                    <div class="h-6 w-[1px] bg-slate-800"></div>
+                    <div>
+                        <span class="text-[10px] uppercase text-slate-400 block">Pontos</span>
+                        <span id="missionScore" class="mono text-sm font-extrabold text-sky-400">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTEÚDO PRINCIPAL (3 COLUNAS NO DESKTOP) -->
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-3 grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+
+        <!-- COLUNA ESQUERDA: CONTROLES FARMACOLÓGICOS -->
+        <section class="lg:col-span-3 flex flex-col gap-3 order-2 lg:order-1">
+            <!-- UTEROTÔNICOS (VIAS DE CONTRAÇÃO) -->
+            <div class="bg-slate-900/90 border border-rose-500/30 rounded-2xl p-3.5 shadow-lg">
+                <div class="flex items-center justify-between mb-2.5">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                        <h3 class="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-rose-400">1. Uterotônicos (Contração +)</h3>
+                    </div>
+                    <span class="text-[11px] text-slate-400 font-medium">Aumentam Ca²⁺ / MLCK</span>
+                </div>
+
+                <div class="space-y-2">
+                    <!-- Ocitocina -->
+                    <button id="btnDrugOXT" onclick="toggleDrug('oxt')" class="w-full text-left p-2.5 rounded-xl border border-slate-800 bg-slate-950/70 hover:bg-slate-900 transition-all flex items-center justify-between group">
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-cyan-300 flex items-center gap-1.5">
+                                <span>💉 Ocitocina</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700/50">Receptor OXT</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Via Gq → ativa PLC → ↑ IP₃ → libera Ca²⁺</p>
+                        </div>
+                        <span id="badgeDrugOXT" class="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400">OFF</span>
+                    </button>
+
+                    <!-- Prostaglandinas E e F2alpha -->
+                    <button id="btnDrugPG" onclick="toggleDrug('pg')" class="w-full text-left p-2.5 rounded-xl border border-slate-800 bg-slate-950/70 hover:bg-slate-900 transition-all flex items-center justify-between group">
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-orange-300 flex items-center gap-1.5">
+                                <span>💊 Prostaglandina E e F2α</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-700/50">Receptor FP</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Misoprostol/Dinoprostona: Gq → PLC → ↑ IP₃ → Ca²⁺</p>
+                        </div>
+                        <span id="badgeDrugPG" class="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400">OFF</span>
+                    </button>
+
+                    <!-- Metilergometrina -->
+                    <button id="btnDrugErgot" onclick="toggleDrug('ergot')" class="w-full text-left p-2.5 rounded-xl border border-slate-800 bg-slate-950/70 hover:bg-slate-900 transition-all flex items-center justify-between group">
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-rose-300 flex items-center gap-1.5">
+                                <span>⚡ Metilergometrina</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-700/50">5-HT2A / α-1a</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Fosfolipase C → IP₃ (Ca²⁺) + DAG (PKC → Fosforilação)</p>
+                        </div>
+                        <span id="badgeDrugErgot" class="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400">OFF</span>
+                    </button>
+
+                    <!-- Canais de Ca2+ -->
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button id="btnChannelL" onclick="toggleDrug('ltypeOpen')" class="p-2 rounded-xl border border-slate-800 bg-slate-950/70 hover:bg-slate-900 text-left transition-all">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-xs text-amber-300">Canal Ca²⁺ Tipo-L</span>
+                                <span id="badgeChannelL" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">ABERTO</span>
+                            </div>
+                            <p class="text-[10px] text-slate-400 mt-0.5">Influxo de Ca²⁺ voltagem-dep.</p>
+                        </button>
+
+                        <button id="btnChannelLigand" onclick="toggleDrug('ligandCa')" class="p-2 rounded-xl border border-slate-800 bg-slate-950/70 hover:bg-slate-900 text-left transition-all">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-xs text-amber-300">Canal Ligante</span>
+                                <span id="badgeChannelLigand" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">OFF</span>
+                            </div>
+                            <p class="text-[10px] text-slate-400 mt-0.5">Ligand-gated Ca²⁺ channel</p>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TOCOLÍTICOS (VIAS DE RELAXAMENTO / INIBIÇÃO) -->
+            <div class="bg-slate-900/90 border border-sky-500/30 rounded-2xl p-3.5 shadow-lg">
+                <div class="flex items-center justify-between mb-2.5">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
+                        <h3 class="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-sky-400">2. Tocolíticos (Relaxamento -)</h3>
+                    </div>
+                    <span class="text-[11px] text-slate-400 font-medium">Inibem MLCK / Ca²⁺</span>
+                </div>
+
+                <div class="space-y-2">
+                    <!-- Agonista Beta-2 -->
+                    <button id="btnDrugBeta2" onclick="toggleDrug('beta2')" class="w-full text-left p-2.5 rounded-xl border border-slate-800 bg-slate-950/70 hover:bg-slate-900 transition-all flex items-center justify-between">
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-indigo-300 flex items-center gap-1.5">
+                                <span>🌬️ Agonista β₂ (Terbutalina)</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/50">Receptor β₂</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Via Gs → AC → ↑ cAMP → ↑ PKA → Inibe (-) MLCK</p>
+                        </div>
+                        <span id="badgeDrugBeta2" class="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400">OFF</span>
+                    </button>
+
+                    <!-- Doador de Óxido Nítrico / sGC -->
+                    <button id="btnDrugSGC" onclick="toggleDrug('sgc')" class="w-full text-left p-2.5 rounded-xl border border-slate-800 bg-slate-950/70 hover:bg-slate-900 transition-all flex items-center justify-between">
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-sky-300 flex items-center gap-1.5">
+                                <span>💨 Óxido Nítrico / Estímulo sGC</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-700/50">sGC</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Ativa sGC → ↑ cGMP → ativa PKG → Inibe (-) MLCK</p>
+                        </div>
+                        <span id="badgeDrugSGC" class="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400">OFF</span>
+                    </button>
+
+                    <!-- Bloqueador de Canal de Cálcio -->
+                    <button id="btnDrugCCB" onclick="toggleDrug('ccb')" class="w-full text-left p-2.5 rounded-xl border border-slate-800 bg-slate-950/70 hover:bg-slate-900 transition-all flex items-center justify-between">
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-teal-300 flex items-center gap-1.5">
+                                <span>🛡️ Bloqueador Canal Ca²⁺ (Nifedipina)</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Fecha o L-type Ca²⁺ channel → reduz influxo de Ca²⁺</p>
+                        </div>
+                        <span id="badgeDrugCCB" class="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400">OFF</span>
+                    </button>
+                </div>
+
+                <!-- Botão Reset -->
+                <div class="mt-3 pt-2.5 border-t border-slate-800 flex gap-2">
+                    <button onclick="resetAllDrugs()" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition-all">
+                        🔄 Limpar Fármacos / Estado Basal
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- COLUNA CENTRAL: DIAGRAMA INTERATIVO DA CÉLULA MIOMETRIAL + ZOOM METILERGOMETRINA -->
+        <section class="lg:col-span-6 flex flex-col gap-3 order-1 lg:order-2">
+            <div class="bg-slate-900/95 border border-slate-800 rounded-2xl p-2 sm:p-3 shadow-2xl relative overflow-hidden">
+                <!-- Barra de Topo do Diagrama -->
+                <div class="flex flex-wrap items-center justify-between gap-2 px-2 pb-2 border-b border-slate-800/80">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-extrabold uppercase tracking-wider text-amber-300">🔬 Diagrama Interativo em Tempo Real</span>
+                        <span class="text-[11px] text-slate-400 hidden sm:inline">(Clique em qualquer molécula ou receptor)</span>
+                    </div>
+                    <div id="cellStatusPill" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                        Tônus Basal Miometrial
+                    </div>
+                </div>
+
+                <!-- Alerta de Pergunta do Modo Quiz -->
+                <div id="quizPromptBox" class="hidden my-2 p-3 rounded-xl bg-gradient-to-r from-indigo-950 via-slate-900 to-sky-950 border-2 border-sky-400/60 shadow-lg">
+                    <div class="flex items-center justify-between gap-2">
+                        <div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-sky-300 bg-sky-500/20 px-2 py-0.5 rounded">PERGUNTA DO QUIZ • CLIQUE NA ESTRUTURA NO DIAGRAMA ABAIXO</span>
+                            <p id="quizQuestionText" class="text-sm sm:text-base font-bold text-white mt-1">
+                                Qual enzima central é fosforilada e INIBIDA (-) tanto pela PKA quanto pela PKG?
+                            </p>
+                        </div>
+                        <button onclick="nextQuizQuestion()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 shrink-0">
+                            Pular ⏭️
+                        </button>
+                    </div>
+                </div>
+
+                <!-- CONTAINER SVG + CANVAS DE PARTÍCULAS -->
+                <div class="relative w-full aspect-[16/11] bg-slate-950 rounded-xl overflow-hidden border border-slate-800/90 mt-1">
+                    <svg id="cellSvg" viewBox="0 0 920 620" class="w-full h-full select-none">
+                        <defs>
+                            <!-- Marcadores de Seta -->
+                            <marker id="arrow-dark" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 1 L 10 5 L 0 9 z" fill="#1e293b"/>
+                            </marker>
+                            <marker id="arrow-active-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 1 L 10 5 L 0 9 z" fill="#16a34a"/>
+                            </marker>
+                            <marker id="arrow-active-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 1 L 10 5 L 0 9 z" fill="#dc2626"/>
+                            </marker>
+                            <marker id="arrow-active-orange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 1 L 10 5 L 0 9 z" fill="#ea580c"/>
+                            </marker>
+                            <!-- Gradientes fieis à ilustração -->
+                            <linearGradient id="cytoplasmGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#f7edd4"/>
+                                <stop offset="100%" stop-color="#efe0bc"/>
+                            </linearGradient>
+                            <linearGradient id="membraneGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#e5b8af"/>
+                                <stop offset="50%" stop-color="#f3d2c8"/>
+                                <stop offset="100%" stop-color="#e5b8af"/>
+                            </linearGradient>
+                            <linearGradient id="channelBlue" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#93c5fd"/>
+                                <stop offset="50%" stop-color="#e0f2fe"/>
+                                <stop offset="100%" stop-color="#64748b"/>
+                            </linearGradient>
+                        </defs>
+
+                        <!-- FUNDO GERAL CLARO ESTILO LIVRO TEXTO MÉDICO PARA ALTO CONTRASTE -->
+                        <rect x="0" y="0" width="920" height="620" fill="#f8fafc" />
+
+                        <!-- DIVISÓRIA ENTRE CÉLULA MIOMETRIAL (ESQ) E ZOOM DA METILERGOMETRINA (DIR) -->
+                        <line x1="600" y1="20" x2="600" y2="600" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6,6"/>
+
+                        <!-- ========================================================================= -->
+                        <!-- LADO ESQUERDO: CÉLULA MIOMETRIAL (MYOMETRIAL CELL)                        -->
+                        <!-- ========================================================================= -->
+                        <g id="myometrialCellGroup">
+                            <!-- Membrana Plasmática Externa (Borda Rosa/Salmão arredondada como na imagem) -->
+                            <rect id="cellMembraneOuter" x="25" y="110" width="515" height="390" rx="34" fill="url(#membraneGrad)" stroke="#c08477" stroke-width="3"/>
+                            <!-- Citoplasma Interno Creme/Amarelo Claro -->
+                            <rect id="cellCytoplasm" x="41" y="126" width="483" height="358" rx="22" fill="url(#cytoplasmGrad)" stroke="#d6bfa7" stroke-width="2"/>
+
+                            <!-- Fibras de Actina-Miosina de Fundo (Animadas quando há contração) -->
+                            <g id="contractileFibers" opacity="0.22">
+                                <line x1="60" y1="230" x2="500" y2="230" stroke="#b45309" stroke-width="2" stroke-dasharray="10,8"/>
+                                <line x1="60" y1="290" x2="500" y2="290" stroke="#b45309" stroke-width="2" stroke-dasharray="10,8"/>
+                                <line x1="60" y1="350" x2="500" y2="350" stroke="#b45309" stroke-width="2" stroke-dasharray="10,8"/>
+                            </g>
+
+                            <!-- Rótulo MYOMETRIAL CELL -->
+                            <text x="58" y="468" fill="#1e293b" font-size="14" font-weight="800" letter-spacing="0.5">MYOMETRIAL CELL</text>
+
+                            <!-- ==================== VIAS DE RELAXAMENTO (TOPO ESQUERDO) ==================== -->
+                            <!-- Receptor Beta-2 (Serpentina 7TM Roxo/Azul) -->
+                            <g id="node_beta2" class="node-interactive" onclick="inspectNode('beta2')">
+                                <rect x="65" y="92" width="48" height="44" rx="8" fill="#a5b4fc" fill-opacity="0.35"/>
+                                <path d="M 68 95 C 72 135, 75 95, 79 135 C 83 95, 86 135, 90 95 C 94 135, 97 95, 101 135 C 105 95, 108 135, 112 105" stroke="#4f46e5" stroke-width="4" fill="none" stroke-linecap="round"/>
+                                <circle cx="90" cy="115" r="14" fill="#c7d2fe" stroke="#4338ca" stroke-width="2"/>
+                                <text x="90" y="120" text-anchor="middle" fill="#1e1b4b" font-size="14" font-weight="800">β₂</text>
+                            </g>
+
+                            <!-- Proteína Gs (Verde) -->
+                            <g id="node_gs" class="node-interactive" onclick="inspectNode('gs')">
+                                <ellipse cx="127" cy="142" rx="18" ry="14" fill="#86efac" stroke="#15803d" stroke-width="2"/>
+                                <text x="127" y="147" text-anchor="middle" fill="#064e3b" font-size="13" font-weight="800">Gs</text>
+                            </g>
+
+                            <!-- AC - Adenilato Ciclase (Rosa) -->
+                            <g id="node_ac" class="node-interactive" onclick="inspectNode('ac')">
+                                <path d="M 148 92 L 166 92 L 166 136 C 174 142, 174 156, 157 156 C 140 156, 140 142, 148 136 Z" fill="#f472b6" stroke="#9d174d" stroke-width="2"/>
+                                <text x="157" y="147" text-anchor="middle" fill="#500724" font-size="13" font-weight="800">AC</text>
+                            </g>
+
+                            <!-- Setas: AC -> cAMP -> PKA -> inibe MLCK -->
+                            <line id="line_ac_camp" x1="157" y1="160" x2="157" y2="196" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+                            
+                            <g id="node_camp" class="node-interactive" onclick="inspectNode('camp')">
+                                <rect x="127" y="200" width="60" height="24" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+                                <text x="157" y="217" text-anchor="middle" fill="#0f172a" font-size="14" font-weight="800">cAMP</text>
+                            </g>
+
+                            <line id="line_camp_pka" x1="157" y1="226" x2="157" y2="256" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <g id="node_pka" class="node-interactive" onclick="inspectNode('pka')">
+                                <rect x="127" y="260" width="60" height="26" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+                                <text x="157" y="278" text-anchor="middle" fill="#0f172a" font-size="14" font-weight="800">↑PKA</text>
+                            </g>
+
+                            <line id="line_pka_mlck" x1="157" y1="290" x2="157" y2="352" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <!-- Via sGC -> cGMP -> PKG -> inibe MLCK -->
+                            <line id="line_no_sgc" x1="255" y1="100" x2="255" y2="140" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <g id="node_sgc" class="node-interactive" onclick="inspectNode('sgc')">
+                                <polygon points="225,162 242,145 282,145 282,179 242,179" fill="#bae6fd" stroke="#0284c7" stroke-width="2"/>
+                                <text x="257" y="167" text-anchor="middle" fill="#0c4a6e" font-size="13" font-weight="800">sGC</text>
+                            </g>
+
+                            <line id="line_sgc_cgmp" x1="255" y1="182" x2="255" y2="218" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <g id="node_cgmp" class="node-interactive" onclick="inspectNode('cgmp')">
+                                <rect x="225" y="222" width="60" height="24" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+                                <text x="255" y="239" text-anchor="middle" fill="#0f172a" font-size="14" font-weight="800">cGMP</text>
+                            </g>
+
+                            <line id="line_cgmp_pkg" x1="250" y1="248" x2="232" y2="282" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <g id="node_pkg" class="node-interactive" onclick="inspectNode('pkg')">
+                                <rect x="196" y="286" width="54" height="24" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+                                <text x="223" y="303" text-anchor="middle" fill="#0f172a" font-size="14" font-weight="800">PKG</text>
+                            </g>
+
+                            <line id="line_pkg_mlck" x1="215" y1="312" x2="192" y2="352" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <!-- Ícone Vermelho de Inibição (-) sobre a MLCK -->
+                            <g id="inhibitoryMinus" class="node-interactive" onclick="inspectNode('mlck')">
+                                <circle cx="177" cy="336" r="11" fill="#ef4444" stroke="#ffffff" stroke-width="1.5"/>
+                                <line x1="171" y1="336" x2="183" y2="336" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+                            </g>
+
+                            <!-- ==================== EIXO CENTRAL: MLCK, MIOSINA E CONTRAÇÃO ==================== -->
+                            <!-- MLCK -->
+                            <g id="node_mlck" class="node-interactive" onclick="inspectNode('mlck')">
+                                <rect x="135" y="356" width="66" height="30" rx="8" fill="#fde68a" stroke="#b45309" stroke-width="2"/>
+                                <text x="168" y="376" text-anchor="middle" fill="#0f172a" font-size="15" font-weight="800">MLCK</text>
+                            </g>
+
+                            <!-- Curva Myosin -> Myosin-PO4 -->
+                            <path id="line_myosin_cycle" d="M 255 398 Q 190 385 204 368 Q 215 352 255 342" fill="none" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <!-- Sinal Verde (+) da MLCK/Calmodulina -->
+                            <g id="stimulatoryPlusMlck" class="node-interactive" onclick="inspectNode('mlck')">
+                                <circle cx="236" cy="368" r="11" fill="#10b981" stroke="#ffffff" stroke-width="1.5"/>
+                                <line x1="231" y1="368" x2="241" y2="368" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+                                <line x1="236" y1="363" x2="236" y2="373" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+                            </g>
+
+                            <!-- Myosin -->
+                            <g id="node_myosin" class="node-interactive" onclick="inspectNode('myosin')">
+                                <text x="290" y="405" text-anchor="middle" fill="#0f172a" font-size="14" font-weight="700">Myosin</text>
+                            </g>
+
+                            <!-- Myosin-PO4 -->
+                            <g id="node_myosin_po4" class="node-interactive" onclick="inspectNode('myosin_po4')">
+                                <rect x="260" y="324" width="102" height="26" rx="6" fill="#dcfce7" stroke="#15803d" stroke-width="1.5"/>
+                                <text x="311" y="342" text-anchor="middle" fill="#064e3b" font-size="14" font-weight="800">Myosin-PO₄</text>
+                            </g>
+
+                            <!-- Seta Myosin-PO4 -> CONTRACTION -->
+                            <line id="line_myosin_contraction" x1="316" y1="322" x2="368" y2="215" stroke="#1e293b" stroke-width="3" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <!-- CONTRACTION (+) -->
+                            <g id="node_contraction" class="node-interactive" onclick="inspectNode('contraction')">
+                                <rect x="305" y="168" width="142" height="36" rx="10" fill="#ffe4e6" stroke="#e11d48" stroke-width="2.5"/>
+                                <text x="376" y="191" text-anchor="middle" fill="#881337" font-size="15" font-weight="900">CONTRACTION</text>
+                                <circle cx="388" cy="218" r="11" fill="#10b981" stroke="#ffffff" stroke-width="1.5"/>
+                                <line x1="383" y1="218" x2="393" y2="218" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+                                <line x1="388" y1="213" x2="388" y2="223" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+                            </g>
+
+                            <!-- Calmodulin -->
+                            <g id="node_calmodulin" class="node-interactive" onclick="inspectNode('calmodulin')">
+                                <rect x="292" y="357" width="96" height="25" rx="6" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5"/>
+                                <text x="340" y="374" text-anchor="middle" fill="#0f172a" font-size="14" font-weight="800">Calmodulin</text>
+                            </g>
+
+                            <!-- Seta Calmodulin -> Ciclo MLCK -->
+                            <line id="line_calm_mlck" x1="290" y1="370" x2="216" y2="370" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <!-- ==================== CANAIS DE CÁLCIO (MEMBRANA DIREITA) ==================== -->
+                            <!-- L-type Ca2+ channel -->
+                            <text x="515" y="138" text-anchor="middle" fill="#0f172a" font-size="13" font-weight="800">L-type</text>
+                            <text x="515" y="155" text-anchor="middle" fill="#0f172a" font-size="13" font-weight="800">Ca²⁺ channel</text>
+                            <g id="node_ltype" class="node-interactive" onclick="inspectNode('ltype')">
+                                <rect x="498" y="168" width="52" height="22" rx="9" fill="url(#channelBlue)" stroke="#475569" stroke-width="2"/>
+                                <rect x="498" y="196" width="52" height="22" rx="9" fill="url(#channelBlue)" stroke="#475569" stroke-width="2"/>
+                                <!-- Indicador de bloqueio por Nifedipina -->
+                                <g id="ltypeBlockCross" class="hidden">
+                                    <line x1="508" y1="175" x2="540" y2="210" stroke="#ef4444" stroke-width="4" stroke-linecap="round"/>
+                                    <line x1="540" y1="175" x2="508" y2="210" stroke="#ef4444" stroke-width="4" stroke-linecap="round"/>
+                                </g>
+                            </g>
+
+                            <!-- Ligand-gated Ca2+ channel -->
+                            <g id="node_ligand_channel" class="node-interactive" onclick="inspectNode('ligand_channel')">
+                                <rect x="498" y="302" width="52" height="22" rx="9" fill="url(#channelBlue)" stroke="#475569" stroke-width="2"/>
+                                <rect x="498" y="330" width="52" height="22" rx="9" fill="url(#channelBlue)" stroke="#475569" stroke-width="2"/>
+                            </g>
+                            <text x="515" y="375" text-anchor="middle" fill="#0f172a" font-size="13" font-weight="800">Ligand-gated</text>
+                            <text x="515" y="392" text-anchor="middle" fill="#0f172a" font-size="13" font-weight="800">Ca²⁺ channel</text>
+
+                            <!-- Ca2+ Extracelular e Intracelular + Arcos de Entrada -->
+                            <g id="node_ca_extra" class="node-interactive" onclick="inspectNode('ca')">
+                                <text x="572" y="268" text-anchor="middle" fill="#0f172a" font-size="15" font-weight="800">Ca²⁺</text>
+                                <circle cx="575" cy="285" r="5" fill="#fde047" stroke="#ea580c" stroke-width="2"/>
+                            </g>
+
+                            <!-- Arco Superior de Entrada de Ca2+ (L-type) -->
+                            <path id="line_ca_ltype" d="M 568 248 C 562 178, 485 178, 456 245" fill="none" stroke="#1e293b" stroke-width="3" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <!-- Arco Inferior de Entrada de Ca2+ (Ligand-gated) -->
+                            <path id="line_ca_ligand" d="M 568 278 C 562 348, 485 348, 456 280" fill="none" stroke="#1e293b" stroke-width="3" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <!-- Pool de Ca2+ Intracelular -->
+                            <g id="node_ca_intra" class="node-interactive" onclick="inspectNode('ca')">
+                                <rect x="425" y="248" width="50" height="28" rx="8" fill="#fef08a" stroke="#ea580c" stroke-width="2"/>
+                                <text x="450" y="267" text-anchor="middle" fill="#9a3412" font-size="15" font-weight="900">Ca²⁺</text>
+                                <circle cx="436" cy="224" r="5" fill="#fde047" stroke="#ea580c" stroke-width="2"/>
+                                <circle cx="418" cy="242" r="5" fill="#fde047" stroke="#ea580c" stroke-width="2"/>
+                                <circle cx="468" cy="286" r="5" fill="#fde047" stroke="#ea580c" stroke-width="2"/>
+                            </g>
+
+                            <!-- Seta Ca2+ -> Calmodulin -->
+                            <line id="line_ca_calm" x1="432" y1="278" x2="365" y2="352" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <!-- ==================== RECEPTORES INFERIORES: FP (PROSTAGLANDINA) E OXT (OCITOCINA) ==================== -->
+                            <!-- IP3 Intracelular -->
+                            <g id="node_ip3" class="node-interactive" onclick="inspectNode('ip3')">
+                                <rect x="382" y="395" width="44" height="26" rx="6" fill="#ffedd5" stroke="#ea580c" stroke-width="1.5"/>
+                                <text x="404" y="413" text-anchor="middle" fill="#0f172a" font-size="15" font-weight="800">IP₃</text>
+                            </g>
+
+                            <!-- Seta IP3 -> Ca2+ -->
+                            <line id="line_ip3_ca" x1="412" y1="392" x2="444" y2="282" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <!-- PLC (Fosfolipase C na membrana inferior) -->
+                            <g id="node_plc" class="node-interactive" onclick="inspectNode('plc')">
+                                <ellipse cx="378" cy="462" rx="25" ry="15" fill="#fecdd3" stroke="#be123c" stroke-width="2"/>
+                                <text x="378" y="467" text-anchor="middle" fill="#881337" font-size="13" font-weight="800">PLC</text>
+                            </g>
+
+                            <!-- Seta PLC -> IP3 -->
+                            <line id="line_plc_ip3" x1="385" y1="445" x2="398" y2="424" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)" class="pathway-line"/>
+
+                            <!-- Receptor FP (Prostaglandina E e F2alpha) -->
+                            <g id="node_fp" class="node-interactive" onclick="inspectNode('fp')">
+                                <rect x="296" y="468" width="46" height="40" rx="6" fill="#fdba74" stroke="#c2410c" stroke-width="2"/>
+                                <path d="M 300 465 C 304 510, 308 465, 312 510 C 316 465, 320 510, 324 465 C 328 510, 332 465, 338 510" stroke="#9a3412" stroke-width="2.5" fill="none"/>
+                                <rect x="303" y="476" width="32" height="22" rx="4" fill="#fed7aa" stroke="#9a3412" stroke-width="1.5"/>
+                                <text x="319" y="492" text-anchor="middle" fill="#431407" font-size="13" font-weight="900">FP</text>
+                            </g>
+
+                            <!-- Gq acoplada ao FP -->
+                            <g id="node_gq_fp" class="node-interactive" onclick="inspectNode('gq')">
+                                <ellipse cx="352" cy="482" rx="15" ry="13" fill="#86efac" stroke="#15803d" stroke-width="2"/>
+                                <text x="352" y="486" text-anchor="middle" fill="#064e3b" font-size="12" font-weight="800">Gq</text>
+                            </g>
+
+                            <!-- Gq acoplada ao OXT -->
+                            <g id="node_gq_oxt" class="node-interactive" onclick="inspectNode('gq')">
+                                <ellipse cx="406" cy="482" rx="15" ry="13" fill="#86efac" stroke="#15803d" stroke-width="2"/>
+                                <text x="406" y="486" text-anchor="middle" fill="#064e3b" font-size="12" font-weight="800">Gq</text>
+                            </g>
+
+                            <!-- Receptor OXT (Ocitocina) -->
+                            <g id="node_oxt" class="node-interactive" onclick="inspectNode('oxt')">
+                                <rect x="422" y="468" width="48" height="40" rx="6" fill="#67e8f9" stroke="#0e7490" stroke-width="2"/>
+                                <path d="M 426 465 C 430 510, 434 465, 438 510 C 442 465, 446 510, 450 465 C 454 510, 458 465, 464 510" stroke="#155e75" stroke-width="2.5" fill="none"/>
+                                <rect x="427" y="476" width="38" height="22" rx="4" fill="#a5f3fc" stroke="#155e75" stroke-width="1.5"/>
+                                <text x="446" y="492" text-anchor="middle" fill="#083344" font-size="13" font-weight="900">OXT</text>
+                            </g>
+
+                            <!-- Rótulos Vermelhos Inferiores: Prostaglandina E e F2alpha & Ocitocina -->
+                            <g class="node-interactive" onclick="toggleDrug('pg')">
+                                <line x1="304" y1="538" x2="314" y2="514" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)"/>
+                                <text x="235" y="562" text-anchor="middle" fill="#dc2626" font-size="19" font-weight="800">Prostaglandina</text>
+                                <text x="235" y="586" text-anchor="middle" fill="#dc2626" font-size="19" font-weight="800">E e F2α</text>
+                            </g>
+
+                            <g class="node-interactive" onclick="toggleDrug('oxt')">
+                                <line x1="422" y1="538" x2="432" y2="514" stroke="#1e293b" stroke-width="2.5" marker-end="url(#arrow-dark)"/>
+                                <text x="415" y="565" text-anchor="middle" fill="#dc2626" font-size="19" font-weight="800">Ocitocina</text>
+                            </g>
+                        </g>
+
+                        <!-- ========================================================================= -->
+                        <!-- LADO DIREITO: DETALHE DA VIA DA METILERGOMETRINA (5-HT2A / α-1a)          -->
+                        <!-- ========================================================================= -->
+                        <g id="ergotDetailGroup">
+                            <!-- Título Metilergometrina -->
+                            <g class="node-interactive" onclick="toggleDrug('ergot')">
+                                <text x="755" y="56" text-anchor="middle" fill="#dc2626" font-size="22" font-weight="800">Metilergometrina</text>
+                                <line x1="682" y1="68" x2="682" y2="128" stroke="#0f172a" stroke-width="2.5" marker-end="url(#arrow-dark)"/>
+                            </g>
+
+                            <!-- Receptores 5-HT2A e alpha-1a -->
+                            <text x="742" y="114" text-anchor="middle" fill="#0f172a" font-size="15" font-weight="800">5-HT2A</text>
+                            <text x="742" y="135" text-anchor="middle" fill="#0f172a" font-size="15" font-weight="800">α-1a</text>
+
+                            <!-- Bicamada Lipídica no Zoom -->
+                            <rect x="645" y="165" width="250" height="45" fill="#fef9c3" stroke="#93c5fd" stroke-width="2" rx="6"/>
+                            <!-- Bolinhas de fosfolipídios decorativas -->
+                            <g fill="#bae6fd" stroke="#0284c7" stroke-width="1">
+                                <circle cx="655" cy="165" r="5"/><circle cx="667" cy="165" r="5"/><circle cx="679" cy="165" r="5"/>
+                                <circle cx="715" cy="165" r="5"/><circle cx="727" cy="165" r="5"/><circle cx="739" cy="165" r="5"/>
+                                <circle cx="751" cy="165" r="5"/><circle cx="763" cy="165" r="5"/><circle cx="775" cy="165" r="5"/>
+                                <circle cx="787" cy="165" r="5"/><circle cx="799" cy="165" r="5"/><circle cx="811" cy="165" r="5"/>
+                                <circle cx="823" cy="165" r="5"/><circle cx="835" cy="165" r="5"/><circle cx="847" cy="165" r="5"/>
+                                <circle cx="859" cy="165" r="5"/><circle cx="871" cy="165" r="5"/><circle cx="883" cy="165" r="5"/>
+                            </g>
+
+                            <!-- Receptor Verde 5-HT2A / alpha-1a com ligante rosa -->
+                            <g id="node_ergot_rec" class="node-interactive" onclick="inspectNode('ergot_rec')">
+                                <polygon points="682,135 690,152 682,168 674,152" fill="#f9a8d4" stroke="#831843" stroke-width="1.5"/>
+                                <path d="M 662 150 L 674 150 L 682 168 L 690 150 L 702 150 L 702 222 L 662 222 Z" fill="#6ee7b7" stroke="#065f46" stroke-width="2"/>
+                                <!-- Proteína G acoplada -->
+                                <ellipse cx="705" cy="222" rx="18" ry="15" fill="#6ee7b7" stroke="#065f46" stroke-width="2"/>
+                            </g>
+
+                            <!-- Seta Laranja Curva para Fosfolipase C -->
+                            <path id="line_ergot_plc" d="M 702 238 Q 705 268 728 268" fill="none" stroke="#ea580c" stroke-width="5" marker-end="url(#arrow-active-orange)" class="pathway-line"/>
+
+                            <!-- Fosfolipase C (Barra Vertical) -->
+                            <g id="node_ergot_plc" class="node-interactive" onclick="inspectNode('ergot_plc')">
+                                <rect x="732" y="198" width="32" height="175" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+                                <text x="753" y="285" text-anchor="middle" fill="#0f172a" font-size="15" font-weight="800" transform="rotate(-90 753 285)">Fosfolipase C</text>
+                            </g>
+
+                            <!-- PIP2 Fosfolipídio Amarelo + Anel Inositol com 3 Fosfatos (IP3) -->
+                            <g id="node_ergot_ip3" class="node-interactive" onclick="inspectNode('ip3')">
+                                <rect x="772" y="170" width="24" height="145" fill="#fef08a" stroke="#ca8a04" stroke-width="1.5"/>
+                                <polyline points="776,175 782,182 776,189 782,196 776,203 782,210 776,217 782,224 776,231 782,238 776,245 782,252 776,259 782,266 776,273 782,280" fill="none" stroke="#0f172a" stroke-width="2"/>
+                                <polyline points="788,175 794,182 788,189 794,196 788,203 794,210 788,217 794,224 788,231 794,238 788,245 794,252 788,259 794,266 788,273 794,280" fill="none" stroke="#0f172a" stroke-width="2"/>
+                                <!-- Anel de Inositol Verde com 3 grupos P -->
+                                <polygon points="772,332 788,322 806,332 800,348 778,348" fill="#86efac" stroke="#15803d" stroke-width="2"/>
+                                <circle cx="786" cy="316" r="9" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+                                <text x="786" y="320" text-anchor="middle" fill="#0f172a" font-size="11" font-weight="800">P</text>
+                                <circle cx="792" cy="355" r="9" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+                                <text x="792" y="359" text-anchor="middle" fill="#0f172a" font-size="11" font-weight="800">P</text>
+                                <circle cx="814" cy="352" r="9" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+                                <text x="814" y="356" text-anchor="middle" fill="#0f172a" font-size="11" font-weight="800">P</text>
+
+                                <text x="778" y="405" text-anchor="middle" fill="#0f172a" font-size="17" font-weight="800">IP₃</text>
+                            </g>
+
+                            <!-- DAG (Diacilglicerol) -->
+                            <g id="node_dag" class="node-interactive" onclick="inspectNode('dag')">
+                                <rect x="808" y="176" width="46" height="28" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+                                <text x="831" y="195" text-anchor="middle" fill="#0f172a" font-size="15" font-weight="800">DAG</text>
+                            </g>
+
+                            <!-- Seta DAG -> Proteína cinase C -->
+                            <polyline id="line_dag_pkc" points="854,190 872,190 872,202" fill="none" stroke="#0f172a" stroke-width="2" marker-end="url(#arrow-dark)"/>
+
+                            <!-- Proteína cinase C (PKC - Barra Vertical Direita) -->
+                            <g id="node_pkc" class="node-interactive" onclick="inspectNode('pkc')">
+                                <rect x="856" y="206" width="32" height="168" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+                                <text x="877" y="290" text-anchor="middle" fill="#0f172a" font-size="15" font-weight="800" transform="rotate(-90 877 290)">Proteína cinase C</text>
+                            </g>
+
+                            <!-- Setas Onduladas Vermelhas: IP3 -> Ca2+ -> Ativação / Fosforilação de enzimas <-- PKC -->
+                            <path id="line_ergot_ip3_ca" d="M 762 405 Q 748 418 738 412 Q 728 408 715 424" fill="none" stroke="#dc2626" stroke-width="2.5" marker-end="url(#arrow-active-red)" class="pathway-line"/>
+
+                            <g id="node_ergot_ca" class="node-interactive" onclick="inspectNode('ca')">
+                                <text x="692" y="438" text-anchor="middle" fill="#0f172a" font-size="17" font-weight="800">Ca²⁺</text>
+                            </g>
+
+                            <path id="line_ergot_ca_enz" d="M 702 446 Q 716 456 718 468 Q 722 480 738 492" fill="none" stroke="#dc2626" stroke-width="2.5" marker-end="url(#arrow-active-red)" class="pathway-line"/>
+
+                            <path id="line_pkc_enz" d="M 870 376 C 865 405, 878 425, 865 452 C 855 475, 845 485, 825 505" fill="none" stroke="#dc2626" stroke-width="2.5" marker-end="url(#arrow-active-red)" class="pathway-line"/>
+
+                            <!-- Desfecho da Via da Metilergometrina -->
+                            <g id="node_enz_phospho" class="node-interactive" onclick="inspectNode('enz_phospho')">
+                                <rect x="655" y="498" width="235" height="58" rx="10" fill="#ffe4e6" stroke="#e11d48" stroke-width="2"/>
+                                <text x="772" y="520" text-anchor="middle" fill="#881337" font-size="15" font-weight="800">Ativação</text>
+                                <text x="772" y="544" text-anchor="middle" fill="#881337" font-size="14" font-weight="800">Fosforilação de enzimas</text>
+                            </g>
+                        </g>
+                    </svg>
+
+                    <!-- CANVAS TRANSPARENTE SOBREPOSTO PARA PARTÍCULAS DE SINALIZAÇÃO (Ca2+, IP3, cAMP, cGMP) -->
+                    <canvas id="particleCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+                </div>
+
+                <!-- Legenda Rápida das Partículas -->
+                <div class="flex flex-wrap items-center justify-between gap-2 pt-2 px-2 text-[11px] text-slate-400">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block"></span> Íons Ca²⁺</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span> IP₃ / DAG</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span> Fosforilação MLCK (+)</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span> Inibição PKA / PKG (-)</span>
+                    </div>
+                    <span class="text-slate-500">Fidelidade 100% ao diagrama de referência</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- COLUNA DIREITA: MONITOR TOCOGRÁFICO, INSPETOR BIOQUÍMICO & LOG -->
+        <section class="lg:col-span-3 flex flex-col gap-3 order-3">
+            <!-- MONITOR TOCOGRÁFICO EM TEMPO REAL -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 shadow-lg">
+                <div class="flex items-center justify-between mb-2">
+                    <div>
+                        <h3 class="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                            <span>📈 Monitor Tocográfico (Toco)</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400">Pressão Intrauterina & Cinética de Miosina-PO₄</p>
+                    </div>
+                    <span id="mmhgReadout" class="mono text-sm font-extrabold text-emerald-300 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
+                        18 mmHg
+                    </span>
+                </div>
+
+                <div class="w-full h-28 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden relative">
+                    <canvas id="tocoCanvas" class="w-full h-full block"></canvas>
+                </div>
+            </div>
+
+            <!-- INSPETOR DE ELEMENTOS DA CASCATA BIOQUÍMICA -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 shadow-lg flex-1 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
+                        <span class="text-xs font-extrabold uppercase tracking-wider text-sky-400">🔍 Inspetor Molecular</span>
+                        <span id="inspectorCategory" class="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300">Clique no Diagrama</span>
+                    </div>
+
+                    <h4 id="inspectorTitle" class="font-extrabold text-base text-white mb-1">
+                        MLCK (Quinase da Cadeia Leve de Miosina)
+                    </h4>
+                    <p id="inspectorDesc" class="text-xs text-slate-300 leading-relaxed">
+                        Enzima-chave reguladora da contração miometrial. Quando ativada pelo complexo <strong>Ca²⁺-Calmodulina (+)</strong>, fosforila a Miosina em <strong>Myosin-PO₄</strong>, promovendo a interação actina-miosina e a <strong>CONTRAÇÃO</strong>. É inibida <strong>(-)</strong> pela <strong>PKA</strong> (via β₂/cAMP) e <strong>PKG</strong> (via sGC/cGMP).
+                    </p>
+
+                    <!-- Estado Atual dos Segundos Mensageiros -->
+                    <div class="mt-3 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-xs">
+                        <div class="bg-slate-950 p-2 rounded-xl border border-slate-800">
+                            <span class="text-[10px] text-slate-400 block">IP₃ / PLC (Gq)</span>
+                            <span id="readoutIP3" class="mono font-bold text-orange-400">Basal (10%)</span>
+                        </div>
+                        <div class="bg-slate-950 p-2 rounded-xl border border-slate-800">
+                            <span class="text-[10px] text-slate-400 block">DAG / PKC (Ergot)</span>
+                            <span id="readoutDAG" class="mono font-bold text-rose-400">Inativo (0%)</span>
+                        </div>
+                        <div class="bg-slate-950 p-2 rounded-xl border border-slate-800">
+                            <span class="text-[10px] text-slate-400 block">cAMP → ↑PKA (β₂)</span>
+                            <span id="readoutPKA" class="mono font-bold text-indigo-400">Basal (10%)</span>
+                        </div>
+                        <div class="bg-slate-950 p-2 rounded-xl border border-slate-800">
+                            <span class="text-[10px] text-slate-400 block">cGMP → PKG (sGC)</span>
+                            <span id="readoutPKG" class="mono font-bold text-sky-400">Basal (10%)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resumo Rápido das Vias -->
+                <div class="mt-3 bg-slate-950/90 rounded-xl p-2.5 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                    <div class="font-bold text-slate-200">Resumo Clínico Rápido:</div>
+                    <div>• <strong class="text-rose-400">Contração:</strong> OXT, FP (PGE/F2α) e 5-HT2A/α-1a → ↑PLC → ↑IP₃/DAG → ↑Ca²⁺ → Calmodulina → ↑MLCK → Myosin-PO₄.</div>
+                    <div>• <strong class="text-sky-400">Relaxamento:</strong> β₂ (Gs → AC → cAMP → PKA) e sGC (cGMP → PKG) → inibem (-) a MLCK.</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL CUSTOMIZADO DE FEEDBACK DE MISSÃO (NUNCA USA ALERT) -->
+    <div id="feedbackModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl text-center">
+            <div id="modalIcon" class="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center text-3xl mx-auto mb-4">
+                🏆
+            </div>
+            <h3 id="modalTitle" class="text-xl font-extrabold text-white mb-2">Missão Concluída!</h3>
+            <p id="modalMessage" class="text-sm text-slate-300 mb-5 leading-relaxed">
+                Você controlou a atonia uterina com sucesso ativando a cascata de Ca²⁺-Calmodulina-MLCK!
+            </p>
+            <div class="flex gap-2 justify-center">
+                <button onclick="closeModal()" class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200">
+                    Continuar no Simulador
+                </button>
+                <button onclick="restartCurrentMode()" class="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white shadow-lg">
+                    Jogar Novamente 🔄
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // 1. BANCO DE DADOS BIOQUÍMICO & FARMACOLÓGICO (FIEL À IMAGEM)
+        // ============================================================================
+        const NODE_INFO = {
+            oxt: {
+                title: "Receptor de Ocitocina (OXT)",
+                category: "Via Uterotônica (Gq)",
+                desc: "Receptor acoplado à proteína Gq na membrana da célula miometrial. Quando ativado pela Ocitocina, estimula a Fosfolipase C (PLC), aumentando o IP₃ e liberando Ca²⁺ intracelular."
+            },
+            fp: {
+                title: "Receptor FP (Prostaglandina E e F2α)",
+                category: "Via Uterotônica (Gq)",
+                desc: "Receptor acoplado à proteína Gq ativado pelas Prostaglandinas E e F2α (ex: Misoprostol, Dinoprostona). Ativa a PLC → gera IP₃ → aumenta Ca²⁺ intracelular para promover contração."
+            },
+            gq: {
+                title: "Proteína Gq",
+                category: "Transdução de Sinal",
+                desc: "Proteína G estimulatória acoplada aos receptores FP e OXT. Sua subunidade alfa ativa a enzima Fosfolipase C (PLC) na membrana plasmática."
+            },
+            plc: {
+                title: "PLC (Fosfolipase C)",
+                category: "Enzima de Membrana",
+                desc: "Cliva o fosfolipídio de membrana PIP₂ em dois segundos mensageiros fundamentais: IP₃ (que libera Ca²⁺ do retículo sarcoplasmático) e DAG (que ativa a Proteína Cinase C)."
+            },
+            ip3: {
+                title: "IP₃ (Inositol 1,4,5-trifosfato)",
+                category: "Segundo Mensageiro",
+                desc: "Produzido pela Fosfolipase C após estímulo de Ocitocina, Prostaglandinas ou Metilergometrina. Difunde-se pelo citoplasma e promove a liberação rápida de Ca²⁺ intracelular."
+            },
+            ca: {
+                title: "Íons Cálcio (Ca²⁺)",
+                category: "Mensageiro Central",
+                desc: "Entra na célula pelos canais L-type e Ligand-gated Ca²⁺ ou é liberado via IP₃. O aumento de Ca²⁺ livre liga-se à Calmodulina para ativar a MLCK."
+            },
+            ltype: {
+                title: "L-type Ca²⁺ Channel (Canal Tipo-L)",
+                category: "Canal Iônico de Membrana",
+                desc: "Canal de cálcio dependente de voltagem que permite forte influxo de Ca²⁺ extracelular. É o alvo farmacológico de bloqueadores como a Nifedipina (tocolítico)."
+            },
+            ligand_channel: {
+                title: "Ligand-gated Ca²⁺ Channel",
+                category: "Canal Iônico Operado por Ligante",
+                desc: "Canal na membrana plasmática que permite a entrada adicional de Ca²⁺ extracelular para o citoplasma mediante ativação por agonistas."
+            },
+            calmodulin: {
+                title: "Calmodulina (Calmodulin)",
+                category: "Proteína Sensora de Ca²⁺",
+                desc: "Proteína intracelular que se liga a 4 íons Ca²⁺. O complexo Ca²⁺-Calmodulina ativa diretamente a enzima MLCK (+)."
+            },
+            mlck: {
+                title: "MLCK (Quinase da Cadeia Leve de Miosina)",
+                category: "Enzima Central do Jogo",
+                desc: "Converte Myosin em Myosin-PO₄ (+) para gerar CONTRAÇÃO. Sofre regulação oposta: é ativada (+) pela Calmodulina e inibida (-) pela PKA e pela PKG."
+            },
+            myosin: {
+                title: "Miosina Desfosforilada (Myosin)",
+                category: "Proteína Contrátil",
+                desc: "Forma inativa/relaxada da miosina no músculo liso uterino antes de ser fosforilada pela MLCK."
+            },
+            myosin_po4: {
+                title: "Miosina Fosforilada (Myosin-PO₄)",
+                category: "Motor da Contração (+)",
+                desc: "Quando a cadeia leve da miosina é fosforilada pela MLCK, ela interage com os filamentos de actina, gerando o encurtamento da fibra e a CONTRAÇÃO uterina (+)."
+            },
+            contraction: {
+                title: "CONTRAÇÃO MIOMETRIAL (+)",
+                category: "Resposta Fisiológica Final",
+                desc: "Resultado mecânico da elevação de Myosin-PO₄ e da fosforilação enzimática. Indispensável no trabalho de parto e na hemostasia pós-parto."
+            },
+            beta2: {
+                title: "Receptor Adrenérgico β₂",
+                category: "Via Tocolítica (Relaxamento)",
+                desc: "Receptor acoplado à proteína Gs. Agonistas β₂ (como Terbutalina ou Salbutamol) ativam Gs → Adenilato Ciclase (AC) → ↑ cAMP → ↑ PKA → inibição (-) da MLCK."
+            },
+            gs: {
+                title: "Proteína Gs",
+                category: "Transdução Estimulatória de AC",
+                desc: "Acoplada ao receptor β₂. Estimula diretamente a enzima Adenilato Ciclase (AC) na membrana."
+            },
+            ac: {
+                title: "AC (Adenilato Ciclase)",
+                category: "Enzima Geradora de cAMP",
+                desc: "Converte ATP em AMP cíclico (cAMP) quando estimulada pela proteína Gs acoplada ao receptor β₂."
+            },
+            camp: {
+                title: "cAMP (AMP Cíclico)",
+                category: "Segundo Mensageiro Tocolítico",
+                desc: "Aumenta no citoplasma após ativação da AC e promove a ativação da Proteína Cinase A (↑PKA)."
+            },
+            pka: {
+                title: "↑PKA (Proteína Cinase Dependente de cAMP)",
+                category: "Inibidor da MLCK (-)",
+                desc: "Fosforila a MLCK em um sítio inibitório, reduzindo sua afinidade pelo complexo Ca²⁺-Calmodulina e promovendo o relaxamento miometrial."
+            },
+            sgc: {
+                title: "sGC (Guanilato Ciclase Solúvel)",
+                category: "Via do Óxido Nítrico / Relaxamento",
+                desc: "Enzima citoplasmática ativada pelo Óxido Nítrico (NO). Converte GTP em cGMP."
+            },
+            cgmp: {
+                title: "cGMP (GMP Cíclico)",
+                category: "Segundo Mensageiro Tocolítico",
+                desc: "Segundo mensageiro produzido pela sGC que ativa a Proteína Cinase G (PKG)."
+            },
+            pkg: {
+                title: "PKG (Proteína Cinase G)",
+                category: "Inibidor da MLCK (-)",
+                desc: "Junto com a PKA, inibe (-) a atividade da MLCK, reduzindo a formação de Myosin-PO₄ e relaxando a célula miometrial."
+            },
+            ergot_rec: {
+                title: "Receptores 5-HT2A e α-1a (Metilergometrina)",
+                category: "Alcalóide do Ergot",
+                desc: "A Metilergometrina atua como agonista nos receptores serotoninérgicos 5-HT2A e adrenérgicos α-1a na membrana, ativando potentemente a Fosfolipase C."
+            },
+            ergot_plc: {
+                title: "Fosfolipase C (Via da Metilergometrina)",
+                category: "Cascata Bifurcada",
+                desc: "Hidrolisa os fosfolipídios de membrana gerando simultaneamente IP₃ (com 3 grupamentos fosfato P) e DAG (Diacilglicerol)."
+            },
+            dag: {
+                title: "DAG (Diacilglicerol)",
+                category: "Segundo Mensageiro Lipídico",
+                desc: "Permanece ancorado na membrana plasmática onde recruta e ativa a Proteína Cinase C (PKC)."
+            },
+            pkc: {
+                title: "Proteína Cinase C (PKC)",
+                category: "Via da Metilergometrina",
+                desc: "Ativada pelo DAG na membrana. Promove a ativação e fosforilação de enzimas contráteis, somando-se ao efeito do Ca²⁺ liberado pelo IP₃."
+            },
+            enz_phospho: {
+                title: "Ativação e Fosforilação de Enzimas",
+                category: "Efeito Sinérgico Contráctil",
+                desc: "Convergência do aumento de Ca²⁺ (via IP₃) e da Proteína Cinase C (via DAG), gerando contração uterina tetânica e sustentada típica da Metilergometrina."
+            }
+        };
+
+        // ============================================================================
+        // 2. PERGUNTAS DO QUIZ BIOQUÍMICO INTERATIVO
+        // ============================================================================
+        const QUIZ_QUESTIONS = [
+            {
+                q: "Qual enzima central converte Myosin em Myosin-PO₄ e é INIBIDA (-) tanto pela PKA quanto pela PKG?",
+                targets: ["mlck"],
+                explanation: "Perfeito! A MLCK (Quinase da Cadeia Leve de Miosina) fosforila a miosina (+) e é inibida (-) por PKA e PKG."
+            },
+            {
+                q: "Clique no segundo mensageiro lipídico na membrana que a Fosfolipase C produz junto com o IP₃ para ativar a Proteína Cinase C (via da Metilergometrina):",
+                targets: ["dag"],
+                explanation: "Exato! O DAG (Diacilglicerol) ativa a Proteína Cinase C (PKC) na via da Metilergometrina."
+            },
+            {
+                q: "Em uma paciente com Atonia Uterina, você administra Ocitocina. Clique no receptor específico da Ocitocina acoplado à proteína Gq:",
+                targets: ["oxt"],
+                explanation: "Correto! O receptor OXT acoplado à proteína Gq ativa a PLC e eleva o IP₃."
+            },
+            {
+                q: "Qual proteína intracelular se liga ao Ca²⁺ para ativar (+) diretamente a MLCK?",
+                targets: ["calmodulin"],
+                explanation: "Muito bem! A Calmodulina (Calmodulin) forma o complexo Ca²⁺-Calmodulina que ativa a MLCK."
+            },
+            {
+                q: "Para realizar Tocólise com um agonista β₂, qual enzima de membrana é ativada pela proteína Gs para produzir cAMP?",
+                targets: ["ac"],
+                explanation: "Certo! A Adenilato Ciclase (AC) é estimulada pela proteína Gs e aumenta o cAMP intracelular."
+            },
+            {
+                q: "Qual receptor acoplado à proteína Gq responde às Prostaglandinas E e F2α?",
+                targets: ["fp"],
+                explanation: "Correto! O receptor FP medeia a ação uterotônica das Prostaglandinas E e F2α."
+            },
+            {
+                q: "Clique na enzima citoplasmática solúvel que produz cGMP para ativar a PKG:",
+                targets: ["sgc"],
+                explanation: "Excelente! A sGC (Guanilato Ciclase Solúvel) converte GTP em cGMP, ativando a PKG que inibe a MLCK."
+            },
+            {
+                q: "Quais receptores de membrana são ativados pela Metilergometrina no painel à direita?",
+                targets: ["ergot_rec"],
+                explanation: "Isso mesmo! A Metilergometrina estimula os receptores 5-HT2A e α-1a acoplados à Fosfolipase C."
+            }
+        ];
+
+        // ============================================================================
+        // 3. ESTADO DA SIMULAÇÃO E DO JOGO
+        // ============================================================================
+        const state = {
+            mode: 'lab', // 'lab', 'pph', 'tocolysis', 'quiz'
+            drugs: {
+                oxt: false,
+                pg: false,
+                ergot: false,
+                ltypeOpen: true,
+                ligandCa: false,
+                beta2: false,
+                sgc: false,
+                ccb: false
+            },
+            // Níveis Bioquímicos (0 a 100)
+            ip3: 15,
+            dag: 0,
+            ca: 20,
+            pka: 10,
+            pkg: 10,
+            mlck: 15,
+            contraction: 15,
+            // Missões & Quiz
+            timer: 45,
+            score: 0,
+            holdSeconds: 0,
+            missionActive: false,
+            quizIndex: 0
+        };
+
+        // Histórico para o gráfico Tocográfico
+        const tocoHistory = new Array(160).fill(18);
+        let particles = [];
+        let audioEnabled = true;
+        let synth = null;
+
+        // ============================================================================
+        // 4. EFEITOS SONOROS SINTETIZADOS (TONE.JS - SEM URLS EXTERNAS)
+        // ============================================================================
+        function initAudio() {
+            if (!synth && window.Tone) {
+                synth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: "triangle" },
+                    envelope: { attack: 0.01, decay: 0.12, sustain: 0.05, release: 0.2 }
+                }).toDestination();
+                synth.volume.value = -10;
+            }
+        }
+
+        function playTone(note, duration = "16n") {
+            if (!audioEnabled || !window.Tone) return;
+            try {
+                if (Tone.context.state !== "running") Tone.start();
+                initAudio();
+                synth.triggerAttackRelease(note, duration);
+            } catch (e) {
+                // Ignorar restrições de autoplay
+            }
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            document.getElementById('btnSound').textContent = audioEnabled ? '🔊' : '🔇';
+            if (audioEnabled) playTone("C5", "16n");
+        }
+
+        // ============================================================================
+        // 5. CONTROLE DE FÁRMACOS E INTERAÇÃO COM BOTÕES
+        // ============================================================================
+        function toggleDrug(drugKey) {
+            state.drugs[drugKey] = !state.drugs[drugKey];
+
+            // Se ativar Bloqueador de Canal de Ca2+ (CCB), fecha o canal Tipo-L
+            if (drugKey === 'ccb' && state.drugs.ccb) {
+                state.drugs.ltypeOpen = false;
+            }
+            // Se abrir manualmente o canal Tipo-L, desativa o bloqueador CCB
+            if (drugKey === 'ltypeOpen' && state.drugs.ltypeOpen) {
+                state.drugs.ccb = false;
+            }
+
+            playTone(state.drugs[drugKey] ? "E5" : "A4", "16n");
+            updateDrugButtonsUI();
+        }
+
+        function resetAllDrugs() {
+            state.drugs.oxt = false;
+            state.drugs.pg = false;
+            state.drugs.ergot = false;
+            state.drugs.ltypeOpen = true;
+            state.drugs.ligandCa = false;
+            state.drugs.beta2 = false;
+            state.drugs.sgc = false;
+            state.drugs.ccb = false;
+            playTone("C4", "8n");
+            updateDrugButtonsUI();
+        }
+
+        function updateDrugButtonsUI() {
+            const setBtnState = (btnId, badgeId, active, activeColor, labelOn = "ATIVO", labelOff = "OFF") => {
+                const btn = document.getElementById(btnId);
+                const badge = document.getElementById(badgeId);
+                if (!btn || !badge) return;
+                if (active) {
+                    btn.classList.add('ring-2', `ring-${activeColor}-500`, 'bg-slate-900');
+                    badge.textContent = labelOn;
+                    badge.className = `px-2 py-1 rounded-lg text-[10px] font-extrabold bg-${activeColor}-500 text-slate-950 shadow`;
+                } else {
+                    btn.classList.remove('ring-2', `ring-${activeColor}-500`, 'bg-slate-900');
+                    badge.textContent = labelOff;
+                    badge.className = "px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-800 text-slate-400";
+                }
+            };
+
+            setBtnState('btnDrugOXT', 'badgeDrugOXT', state.drugs.oxt, 'cyan');
+            setBtnState('btnDrugPG', 'badgeDrugPG', state.drugs.pg, 'orange');
+            setBtnState('btnDrugErgot', 'badgeDrugErgot', state.drugs.ergot, 'rose');
+            setBtnState('btnChannelL', 'badgeChannelL', state.drugs.ltypeOpen && !state.drugs.ccb, 'amber', 'ABERTO', 'FECHADO');
+            setBtnState('btnChannelLigand', 'badgeChannelLigand', state.drugs.ligandCa, 'amber', 'ABERTO', 'OFF');
+            setBtnState('btnDrugBeta2', 'badgeDrugBeta2', state.drugs.beta2, 'indigo');
+            setBtnState('btnDrugSGC', 'badgeDrugSGC', state.drugs.sgc, 'sky');
+            setBtnState('btnDrugCCB', 'badgeDrugCCB', state.drugs.ccb, 'teal', 'BLOQUEADO', 'OFF');
+
+            // Cruz vermelha sobre o canal Tipo L quando bloqueado
+            const cross = document.getElementById('ltypeBlockCross');
+            if (cross) {
+                cross.classList.toggle('hidden', state.drugs.ltypeOpen && !state.drugs.ccb);
+            }
+        }
+
+        // ============================================================================
+        // 6. MOTOR FISIOLÓGICO & ATUALIZAÇÃO VISUAL DO SVG
+        // ============================================================================
+        function updatePhysiology(dt) {
+            // 1. Alvo de IP3 (OXT, FP e Metilergometrina ativam PLC -> IP3)
+            let targetIP3 = 10;
+            if (state.drugs.oxt) targetIP3 += 38;
+            if (state.drugs.pg) targetIP3 += 35;
+            if (state.drugs.ergot) targetIP3 += 35;
+            targetIP3 = Math.min(100, targetIP3);
+
+            // 2. Alvo de DAG / PKC (Via da Metilergometrina)
+            let targetDAG = state.drugs.ergot ? 90 : 0;
+
+            // 3. Alvo de [Ca2+] Intracelular
+            let targetCa = 12 + (state.ip3 * 0.52);
+            if (state.drugs.ltypeOpen && !state.drugs.ccb) {
+                targetCa += 22;
+                // Ocitocina e Prostaglandinas também potencializam despolarização e abertura de canais L
+                if (state.drugs.oxt || state.drugs.pg) targetCa += 12;
+            }
+            if (state.drugs.ligandCa) {
+                targetCa += 24;
+            }
+            if (state.drugs.ccb) {
+                targetCa *= 0.55;
+            }
+            targetCa = Math.max(5, Math.min(100, targetCa));
+
+            // 4. Vias Inibitórias (Tocolíticos): PKA (via Beta-2/Gs/AC/cAMP) e PKG (via sGC/cGMP)
+            let targetPKA = state.drugs.beta2 ? 92 : 10;
+            let targetPKG = state.drugs.sgc ? 92 : 10;
+
+            // Suavização exponencial das concentrações
+            const speed = 4.0 * dt;
+            state.ip3 += (targetIP3 - state.ip3) * speed;
+            state.dag += (targetDAG - state.dag) * speed;
+            state.ca += (targetCa - state.ca) * speed;
+            state.pka += (targetPKA - state.pka) * speed;
+            state.pkg += (targetPKG - state.pkg) * speed;
+
+            // 5. Atividade da MLCK: Ativada por Ca2+-Calmodulina (+) e Inibida por PKA e PKG (-)
+            const caCalmodulinDrive = state.ca * 1.05;
+            const totalInhibition = (state.pka - 10) * 0.55 + (state.pkg - 10) * 0.50;
+            let targetMLCK = Math.max(4, Math.min(100, caCalmodulinDrive - totalInhibition));
+            state.mlck += (targetMLCK - state.mlck) * speed;
+
+            // 6. Contração Final (Myosin-PO4 + Fosforilação de enzimas pela PKC da Metilergometrina)
+            let targetContraction = state.mlck + (state.dag * 0.22);
+            targetContraction = Math.max(4, Math.min(100, targetContraction));
+            state.contraction += (targetContraction - state.contraction) * (3.2 * dt);
+
+            updateHeaderAndDiagramUI();
+        }
+
+        function updateHeaderAndDiagramUI() {
+            const caRound = Math.round(state.ca);
+            const mlckRound = Math.round(state.mlck);
+            const contRound = Math.round(state.contraction);
+
+            document.getElementById('caValueText').textContent = `${caRound}%`;
+            document.getElementById('caBar').style.width = `${caRound}%`;
+
+            document.getElementById('mlckValueText').textContent = `${mlckRound}%`;
+            document.getElementById('mlckBar').style.width = `${mlckRound}%`;
+
+            document.getElementById('contractionValueText').textContent = `${contRound}%`;
+            document.getElementById('contractionBar').style.width = `${contRound}%`;
+
+            // Readouts do Inspetor
+            document.getElementById('readoutIP3').textContent = `${Math.round(state.ip3)}% ${state.ip3 > 35 ? '(Ativo ↑)' : '(Basal)'}`;
+            document.getElementById('readoutDAG').textContent = `${Math.round(state.dag)}% ${state.dag > 30 ? '(PKC Ativa ↑)' : '(Inativo)'}`;
+            document.getElementById('readoutPKA').textContent = `${Math.round(state.pka)}% ${state.pka > 35 ? '(Inibindo MLCK -)' : '(Basal)'}`;
+            document.getElementById('readoutPKG').textContent = `${Math.round(state.pkg)}% ${state.pkg > 35 ? '(Inibindo MLCK -)' : '(Basal)'}`;
+
+            // Pressão em mmHg simulada
+            const mmhg = Math.round(10 + (state.contraction * 0.85));
+            document.getElementById('mmhgReadout').textContent = `${mmhg} mmHg`;
+
+            // Status clínico no topo do diagrama
+            const pill = document.getElementById('cellStatusPill');
+            if (contRound >= 80) {
+                pill.textContent = "🔥 Contração Uterina Forte (Hemostasia / Trabalho de Parto Ativo)";
+                pill.className = "px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/50";
+            } else if (contRound <= 20) {
+                pill.textContent = "🌊 Miométrio Relaxado (Tocólise Efetiva)";
+                pill.className = "px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-500/20 text-sky-300 border border-sky-500/50";
+            } else {
+                pill.textContent = "⚖️ Tônus Miometrial Moderado / Basal";
+                pill.className = "px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700";
+            }
+
+            // Deformação visual sutil da célula miometrial conforme contrai (efeito mecânico)
+            const squeezeX = 1 - ((state.contraction - 15) / 100) * 0.06;
+            const squeezeY = 1 + ((state.contraction - 15) / 100) * 0.03;
+            const cellOuter = document.getElementById('cellMembraneOuter');
+            const cellCyto = document.getElementById('cellCytoplasm');
+            const fibers = document.getElementById('contractileFibers');
+            if (cellOuter && cellCyto) {
+                cellOuter.style.transformOrigin = "280px 305px";
+                cellCyto.style.transformOrigin = "280px 305px";
+                cellOuter.style.transform = `scale(${squeezeX.toFixed(3)}, ${squeezeY.toFixed(3)})`;
+                cellCyto.style.transform = `scale(${squeezeX.toFixed(3)}, ${squeezeY.toFixed(3)})`;
+            }
+            if (fibers) {
+                fibers.setAttribute('opacity', (0.15 + (state.contraction / 100) * 0.65).toFixed(2));
+            }
+
+            // Destaque dinâmico das linhas de sinalização no SVG
+            setLineActive('line_ac_camp', state.drugs.beta2, '#4f46e5');
+            setLineActive('line_camp_pka', state.drugs.beta2, '#4f46e5');
+            setLineActive('line_pka_mlck', state.drugs.beta2, '#dc2626');
+
+            setLineActive('line_no_sgc', state.drugs.sgc, '#0284c7');
+            setLineActive('line_sgc_cgmp', state.drugs.sgc, '#0284c7');
+            setLineActive('line_cgmp_pkg', state.drugs.sgc, '#0284c7');
+            setLineActive('line_pkg_mlck', state.drugs.sgc, '#dc2626');
+
+            const plcActive = state.drugs.oxt || state.drugs.pg;
+            setLineActive('line_plc_ip3', plcActive, '#ea580c');
+            setLineActive('line_ip3_ca', plcActive || state.drugs.ergot, '#ea580c');
+
+            setLineActive('line_ca_ltype', state.drugs.ltypeOpen && !state.drugs.ccb, '#d97706');
+            setLineActive('line_ca_ligand', state.drugs.ligandCa, '#d97706');
+            setLineActive('line_ca_calm', state.ca > 35, '#d97706');
+            setLineActive('line_calm_mlck', state.ca > 35, '#16a34a');
+            setLineActive('line_myosin_cycle', state.mlck > 35, '#16a34a');
+            setLineActive('line_myosin_contraction', state.contraction > 45, '#e11d48');
+
+            // Linhas da Metilergometrina
+            setLineActive('line_ergot_plc', state.drugs.ergot, '#ea580c');
+            setLineActive('line_ergot_ip3_ca', state.drugs.ergot, '#dc2626');
+            setLineActive('line_ergot_ca_enz', state.drugs.ergot, '#dc2626');
+            setLineActive('line_pkc_enz', state.drugs.ergot, '#dc2626');
+        }
+
+        function setLineActive(id, isActive, activeColor) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (isActive) {
+                el.classList.add('pathway-active');
+                el.setAttribute('stroke', activeColor);
+                el.setAttribute('stroke-width', '3.5');
+            } else {
+                el.classList.remove('pathway-active');
+                el.setAttribute('stroke', '#1e293b');
+                el.setAttribute('stroke-width', '2.5');
+            }
+        }
+
+        // ============================================================================
+        // 7. SISTEMA DE PARTÍCULAS NO CANVAS SOBREPOSTO AO SVG
+        // ============================================================================
+        const pCanvas = document.getElementById('particleCanvas');
+        const pCtx = pCanvas.getContext('2d');
+
+        function resizeCanvases() {
+            const rect = pCanvas.parentElement.getBoundingClientRect();
+            pCanvas.width = rect.width;
+            pCanvas.height = rect.height;
+
+            const tocoCanvas = document.getElementById('tocoCanvas');
+            const tocoRect = tocoCanvas.parentElement.getBoundingClientRect();
+            tocoCanvas.width = tocoRect.width;
+            tocoCanvas.height = tocoRect.height;
+        }
+        window.addEventListener('resize', resizeCanvases);
+
+        // Converte coordenadas de referência do SVG (920x620) para o Canvas atual
+        function svgToCanvas(x, y) {
+            return {
+                x: (x / 920) * pCanvas.width,
+                y: (y / 620) * pCanvas.height
+            };
+        }
+
+        function spawnPathParticle(x1, y1, x2, y2, color, radius = 4, speed = 0.025) {
+            if (particles.length > 140) return;
+            particles.push({
+                x1, y1, x2, y2,
+                t: 0,
+                speed: speed + Math.random() * 0.01,
+                color,
+                radius
+            });
+        }
+
+        function emitSignalingParticles() {
+            // Ca2+ entrando pelo canal L-type
+            if (state.drugs.ltypeOpen && !state.drugs.ccb && Math.random() < 0.35) {
+                spawnPathParticle(568, 250, 452, 255, '#facc15', 4.5, 0.028);
+            }
+            // Ca2+ entrando pelo canal Ligand-gated
+            if (state.drugs.ligandCa && Math.random() < 0.35) {
+                spawnPathParticle(568, 285, 452, 270, '#facc15', 4.5, 0.028);
+            }
+            // PLC -> IP3 -> Ca2+ (Ocitocina ou Prostaglandina)
+            if ((state.drugs.oxt || state.drugs.pg) && Math.random() < 0.45) {
+                spawnPathParticle(378, 455, 404, 410, '#fb923c', 4, 0.035);
+                spawnPathParticle(404, 400, 446, 272, '#f97316', 4, 0.03);
+            }
+            // Ca2+ -> Calmodulina -> MLCK -> Myosin-PO4 -> Contração
+            if (state.ca > 35 && Math.random() < 0.45) {
+                spawnPathParticle(442, 272, 345, 365, '#facc15', 4, 0.03);
+            }
+            if (state.mlck > 35 && Math.random() < 0.45) {
+                spawnPathParticle(330, 368, 200, 368, '#4ade80', 4, 0.032);
+                spawnPathParticle(312, 330, 372, 200, '#fb7185', 5, 0.03);
+            }
+            // Via Beta-2 -> Gs -> AC -> cAMP -> PKA -> inibe MLCK
+            if (state.drugs.beta2 && Math.random() < 0.45) {
+                spawnPathParticle(157, 152, 157, 275, '#818cf8', 4, 0.03);
+                spawnPathParticle(157, 280, 165, 355, '#ef4444', 4.5, 0.03);
+            }
+            // Via sGC -> cGMP -> PKG -> inibe MLCK
+            if (state.drugs.sgc && Math.random() < 0.45) {
+                spawnPathParticle(255, 175, 223, 295, '#38bdf8', 4, 0.03);
+                spawnPathParticle(220, 305, 182, 355, '#ef4444', 4.5, 0.03);
+            }
+            // Via da Metilergometrina (Direita)
+            if (state.drugs.ergot && Math.random() < 0.5) {
+                spawnPathParticle(768, 405, 695, 435, '#fb923c', 4, 0.032);
+                spawnPathParticle(698, 445, 745, 510, '#facc15', 4.5, 0.03);
+                spawnPathParticle(870, 370, 820, 510, '#e11d48', 4.5, 0.028);
+            }
+        }
+
+        function renderParticles() {
+            pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.t += p.speed;
+                if (p.t >= 1) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+                const curX = p.x1 + (p.x2 - p.x1) * p.t;
+                const curY = p.y1 + (p.y2 - p.y1) * p.t;
+                const pos = svgToCanvas(curX, curY);
+
+                pCtx.beginPath();
+                pCtx.arc(pos.x, pos.y, p.radius, 0, Math.PI * 2);
+                pCtx.fillStyle = p.color;
+                pCtx.shadowColor = p.color;
+                pCtx.shadowBlur = 8;
+                pCtx.fill();
+            }
+        }
+
+        // ============================================================================
+        // 8. MONITOR TOCOGRÁFICO (CURVA DE CONTRAÇÃO UTERINA)
+        // ============================================================================
+        let tocoTick = 0;
+        function renderTocoGraph() {
+            const canvas = document.getElementById('tocoCanvas');
+            const ctx = canvas.getContext('2d');
+            tocoTick++;
+            if (tocoTick % 3 === 0) {
+                // Pequena oscilação fisiológica + valor atual de contração
+                const wave = Math.sin(tocoTick * 0.08) * (state.contraction * 0.04);
+                tocoHistory.push(Math.max(4, Math.min(98, state.contraction + wave)));
+                if (tocoHistory.length > 160) tocoHistory.shift();
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Linhas de grade horizontais (80% e 20%)
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+            ctx.lineWidth = 1;
+            [0.2, 0.5, 0.8].forEach(r => {
+                const y = canvas.height * r;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            });
+
+            // Desenho da curva
+            ctx.beginPath();
+            for (let i = 0; i < tocoHistory.length; i++) {
+                const x = (i / (tocoHistory.length - 1)) * canvas.width;
+                const y = canvas.height - (tocoHistory[i] / 100) * (canvas.height - 12) - 6;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = state.contraction >= 75 ? '#f43f5e' : (state.contraction <= 22 ? '#38bdf8' : '#10b981');
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+        }
+
+        // ============================================================================
+        // 9. INSPETOR DE NÓS E LÓGICA DE MISSÕES CLÍNICAS / QUIZ
+        // ============================================================================
+        function inspectNode(nodeKey) {
+            const info = NODE_INFO[nodeKey];
+            if (info) {
+                document.getElementById('inspectorTitle').textContent = info.title;
+                document.getElementById('inspectorCategory').textContent = info.category;
+                document.getElementById('inspectorDesc').textContent = info.desc;
+            }
+
+            // Se estiver no modo Quiz Bioquímico, verifica se o nó clicado é a resposta correta
+            if (state.mode === 'quiz') {
+                const currentQ = QUIZ_QUESTIONS[state.quizIndex];
+                if (currentQ.targets.includes(nodeKey)) {
+                    state.score += 150;
+                    document.getElementById('missionScore').textContent = state.score;
+                    playTone("G5", "8n");
+                    document.getElementById('quizQuestionText').innerHTML = `<span class="text-emerald-400">✅ CORRETO!</span> ${currentQ.explanation}`;
+                    setTimeout(() => {
+                        nextQuizQuestion();
+                    }, 1700);
+                } else {
+                    state.score = Math.max(0, state.score - 25);
+                    document.getElementById('missionScore').textContent = state.score;
+                    playTone("C3", "8n");
+                    document.getElementById('inspectorCategory').textContent = "❌ Tente outra estrutura!";
+                }
+            } else {
+                playTone("D5", "32n");
+            }
+        }
+
+        function setGameMode(mode) {
+            state.mode = mode;
+            state.holdSeconds = 0;
+            state.timer = 45;
+            closeModal();
+
+            // Atualizar botões do topo
+            const modes = {
+                lab: 'btnModeLab',
+                pph: 'btnModePPH',
+                tocolysis: 'btnModeToc',
+                quiz: 'btnModeQuiz'
+            };
+            Object.entries(modes).forEach(([k, id]) => {
+                const btn = document.getElementById(id);
+                if (k === mode) {
+                    btn.className = "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-rose-600 text-white shadow";
+                } else {
+                    btn.className = "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-300 hover:bg-slate-800";
+                }
+            });
+
+            const banner = document.getElementById('missionBanner');
+            const quizBox = document.getElementById('quizPromptBox');
+            const progressWrap = document.getElementById('missionProgressWrap');
+
+            if (mode === 'lab') {
+                banner.classList.add('hidden');
+                quizBox.classList.add('hidden');
+                state.missionActive = false;
+                resetAllDrugs();
+            } else if (mode === 'pph') {
+                // Missão 1: Hemorragia Pós-Parto (Atonia Uterina)
+                banner.classList.remove('hidden');
+                quizBox.classList.add('hidden');
+                progressWrap.classList.remove('hidden');
+                document.getElementById('missionBadge').textContent = "🚨 EMERGÊNCIA OBSTÉTRICA 1";
+                document.getElementById('missionTitle').textContent = "Hemorragia Pós-Parto (Atonia Uterina)";
+                document.getElementById('missionDesc').textContent = "O útero está hipotônico! Ative Ocitocina, Prostaglandina E/F2α ou Metilergometrina e garanta canais de Ca²⁺ abertos para elevar a CONTRAÇÃO acima de 80% por 5 segundos.";
+                // Começa com tudo desligado e canal L fechado para exigir ação do jogador
+                resetAllDrugs();
+                state.drugs.ltypeOpen = false;
+                state.ca = 10;
+                state.mlck = 8;
+                state.contraction = 8;
+                state.missionActive = true;
+                updateDrugButtonsUI();
+            } else if (mode === 'tocolysis') {
+                // Missão 2: Trabalho de Parto Prematuro (Tocólise)
+                banner.classList.remove('hidden');
+                quizBox.classList.add('hidden');
+                progressWrap.classList.remove('hidden');
+                document.getElementById('missionBadge').textContent = "🛑 DESAFIO CLÍNICO 2";
+                document.getElementById('missionTitle').textContent = "Trabalho de Parto Prematuro (Tocólise)";
+                document.getElementById('missionDesc').textContent = "A célula está hipercontraída! Iniba a MLCK ativando o receptor β₂ (Gs → AC → cAMP → ↑PKA), sGC (cGMP → PKG) e bloqueando canais de Ca²⁺ para reduzir a contração abaixo de 20% por 5 segundos.";
+                // Começa hipercontraída com OXT e PG ativos
+                resetAllDrugs();
+                state.drugs.oxt = true;
+                state.drugs.pg = true;
+                state.drugs.ltypeOpen = true;
+                state.ip3 = 85;
+                state.ca = 88;
+                state.mlck = 88;
+                state.contraction = 88;
+                state.missionActive = true;
+                updateDrugButtonsUI();
+            } else if (mode === 'quiz') {
+                banner.classList.remove('hidden');
+                quizBox.classList.remove('hidden');
+                progressWrap.classList.add('hidden');
+                document.getElementById('missionBadge').textContent = "🧠 QUIZ DE CASCATA BIOQUÍMICA";
+                document.getElementById('missionTitle').textContent = "Identificação Direta na Célula Miometrial";
+                document.getElementById('missionDesc').textContent = "Leia a pergunta em destaque e clique diretamente no receptor, segundo mensageiro ou enzima correspondente dentro do diagrama!";
+                state.quizIndex = 0;
+                state.missionActive = true;
+                showCurrentQuizQuestion();
+            }
+        }
+
+        function showCurrentQuizQuestion() {
+            const q = QUIZ_QUESTIONS[state.quizIndex];
+            document.getElementById('quizQuestionText').textContent = q.q;
+        }
+
+        function nextQuizQuestion() {
+            state.quizIndex = (state.quizIndex + 1) % QUIZ_QUESTIONS.length;
+            showCurrentQuizQuestion();
+        }
+
+        function updateMissionLogic(dt) {
+            if (!state.missionActive || state.mode === 'lab') return;
+
+            if (state.mode === 'pph') {
+                if (state.contraction >= 80) {
+                    state.holdSeconds += dt;
+                } else {
+                    state.holdSeconds = Math.max(0, state.holdSeconds - dt * 0.5);
+                }
+            } else if (state.mode === 'tocolysis') {
+                if (state.contraction <= 20) {
+                    state.holdSeconds += dt;
+                } else {
+                    state.holdSeconds = Math.max(0, state.holdSeconds - dt * 0.5);
+          
