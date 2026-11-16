@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="pt-BR" class="dark">
 <head>
@@ -1568,4 +1569,100 @@
                     state.holdSeconds += dt;
                 } else {
                     state.holdSeconds = Math.max(0, state.holdSeconds - dt * 0.5);
+                }
+            }
+
+            if (state.mode === 'pph' || state.mode === 'tocolysis') {
+                const pct = Math.min(100, (state.holdSeconds / 5.0) * 100);
+                document.getElementById('missionHoldBar').style.width = `${pct}%`;
+                document.getElementById('missionHoldText').textContent = `${state.holdSeconds.toFixed(1)}s / 5.0s`;
+
+                if (state.holdSeconds >= 5.0) {
+                    state.missionActive = false;
+                    const bonus = Math.round(state.timer * 15);
+                    state.score += 500 + bonus;
+                    document.getElementById('missionScore').textContent = state.score;
+                    playTone("C6", "4n");
+                    if (state.mode === 'pph') {
+                        openModal(
+                            "🏆",
+                            "Atonia Uterina Revertida!",
+                            `Excelente manejo! A ativação das vias de PLC/IP₃, influxo de Ca²⁺ e fosforilação da Miosina pela MLCK manteve a contração acima de 80%, controlando a hemorragia pós-parto. (+${500 + bonus} pts)`
+                        );
+                    } else {
+                        openModal(
+                            "🏆",
+                            "Tocólise Realizada com Sucesso!",
+                            `Parabéns! Ao ativar β₂ (Gs → AC → cAMP → ↑PKA) e sGC (cGMP → PKG), você inibiu (-) a MLCK e reduziu o Ca²⁺ intracelular, relaxando o miométrio abaixo de 20%. (+${500 + bonus} pts)`
+                        );
+                    }
+                }
+            }
+        }
+
+        // Contador regressivo de 1 segundo para missões
+        setInterval(() => {
+            if (!state.missionActive || state.mode === 'lab') return;
+            if (state.timer > 0) {
+                state.timer--;
+                document.getElementById('missionTimer').textContent = `${state.timer}s`;
+                if (state.timer === 0 && (state.mode === 'pph' || state.mode === 'tocolysis')) {
+                    state.missionActive = false;
+                    playTone("F3", "4n");
+                    openModal(
+                        "⏱️",
+                        "Tempo Esgotado!",
+                        "O tempo clínico terminou antes de estabilizar o miométrio por 5 segundos. Revise os agonistas e bloqueadores na barra lateral e tente novamente!"
+                    );
+                }
+            }
+        }, 1000);
+
+        function openModal(icon, title, message) {
+            document.getElementById('modalIcon').textContent = icon;
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalMessage').textContent = message;
+            const modal = document.getElementById('feedbackModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('feedbackModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function restartCurrentMode() {
+            closeModal();
+            setGameMode(state.mode);
+        }
+
+        // ============================================================================
+        // 10. LOOP PRINCIPAL DE ANIMAÇÃO (WINDOW.ONLOAD)
+        // ============================================================================
+        let lastTime = performance.now();
+
+        function gameLoop(now) {
+            const dt = Math.min(0.1, (now - lastTime) / 1000);
+            lastTime = now;
+
+            updatePhysiology(dt);
+            updateMissionLogic(dt);
+            emitSignalingParticles();
+            renderParticles();
+            renderTocoGraph();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = function () {
+            resizeCanvases();
+            updateDrugButtonsUI();
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>
           
